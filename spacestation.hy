@@ -18,9 +18,10 @@
 (def obj_prefix "SpaceStation_")
 
 (defn clear_scene [] (do (apply bpy.ops.object.select_all [] {"action" "DESELECT"})
-                         (if (in "SpaceStation" bpy.context.scene.objects)
-                             (setv (. (get bpy.context.scene.objects "SpaceStation") select) true)
-                             (apply bpy.ops.object.delete [] {"use_global" false}))))
+                         (for [o bpy.context.scene.objects]
+                               (if (o.name.startswith "SpaceStation")
+                                   (setv o.select true)))
+                         (apply bpy.ops.object.delete [] {"use_global" false})))
 
 (defn join_objects [] (do (bpy.ops.object.select_all :action "DESELECT")
                           ; Select all station parts
@@ -28,7 +29,7 @@
                                (if (o.name.startswith obj_prefix)
                                    (setv o.select true)))
                           ; Activate Beam
-                          (setv bpy.context.scene.objects.active (get bpy.data.objects "SpaceStation_Beam"))
+                          (setv bpy.context.scene.objects.active (get bpy.context.scene.objects "SpaceStation_Beam"))
                           (bpy.ops.object.join)
                           (setv bpy.context.object.name "SpaceStation")))
 
@@ -44,10 +45,12 @@
 (defn beam [n] (do (bpy.ops.mesh.primitive_cylinder_add :radius 0.1 :depth (+ 1 n) :location [0 0 0])  ; Center beam for the station
                    (setv bpy.context.object.name "SpaceStation_Beam")))
 
-(defn part_torus [seed z] (do (setv mrad (rng_float seed 1 2.0 5.0))  ; Major radius
+(defn part_torus [seed config z] (do (setv mrad (rng_float seed 1 (get config "torus_major_min")
+                                                                  (get config "torus_major_max")))  ; Major radius
                               (setv zrot (rng_float seed 2 0.0 3.1415))  ; Z rotation
                               (bpy.ops.mesh.primitive_torus_add :major_radius mrad
-                                                                :minor_radius (rng_float seed 3 0.1 0.5)
+                                                                :minor_radius (rng_float seed 3 (get config "torus_minor_min")
+                                                                                                (get config "torus_minor_max"))
                                                                 :location     [0 0 z])  ; The torus itself
                               (rename)
                               (bpy.ops.mesh.primitive_cylinder_add :radius   0.05
@@ -63,23 +66,25 @@
                                                                    :location [0 0 z])  ; Second beam to hold the torus
                               (rename)))
 
-(defn part_bevelbox [seed z] (do (bpy.ops.mesh.primitive_cube_add :radius   (rng_float seed 1 0.2 0.5)
+(defn part_bevelbox [seed config z] (do (bpy.ops.mesh.primitive_cube_add :radius   (rng_float seed 1 (get config "bevelbox_min")
+                                                                                                     (get config "bevelbox_max"))
                                                                   :rotation [0 0 (rng_float seed 2 0.0 3.1415)]
                                                                   :location [0 0 z])  ; Add a cube
                                  (rename)
                                  (bpy.ops.object.modifier_add :type "BEVEL")  ; Add bevel
                                  (bpy.ops.object.modifier_apply :apply_as "DATA" :modifier "Bevel")))  ; Apply the bevel
 
-(defn part_cylinder [seed z] (do (bpy.ops.mesh.primitive_cylinder_add :radius   (rng_float seed 1 0.5 3.0)
-                                                                      :depth    (rng_float seed 2 0.3 1)
+(defn part_cylinder [seed config z] (do (bpy.ops.mesh.primitive_cylinder_add :radius   (rng_float seed 1 (get config "cylinder_min")
+                                                                                                         (get config "cylinder_max"))
+                                                                      :depth    (rng_float seed 2 (get config "cylinder_h_min") (get config "cylinder_h_max"))
                                                                       :location [0 0 z]
                                                                       :vertices 16)  ; Add a cylinder
                                  (rename)
                                  (bpy.ops.object.modifier_add :type "BEVEL")  ; Add bevel
                                  (bpy.ops.object.modifier_apply :apply_as "DATA" :modifier "Bevel")))  ; Apply the bevel
 
-(defn part_storagering [seed z] (do (bpy.ops.mesh.primitive_cube_add :location [1 0 z])  ; Add first cube
-                                    (bpy.ops.transform.resize :value [0.5 0.5 (rng_float seed 1 0.5 1.0)])  ; Scale it
+(defn part_storagering [seed config z] (do (bpy.ops.mesh.primitive_cube_add :location [1 0 z])  ; Add first cube
+                                    (bpy.ops.transform.resize :value [0.5 0.5 (rng_float seed 1 (get config "storage_min") (get config "storage_max"))])  ; Scale it
                                     (bpy.ops.object.transform_apply :location false
                                                                     :rotation false
                                                                     :scale true)  ; Apply scaling to make the bevel look better
@@ -113,22 +118,37 @@
 
 ;;;;; Base generator
 
-(defn generate_station [seed] (do (setv n (+ 3 (rng_int seed 1 5)))
+(defn generate_station [seed config] (do (setv n (+ (get config "min_parts") (rng_int seed 1 (- (get config "max_parts") (get config "min_parts")))))
                                   (print n "parts.")
                                   (beam n)
                                   (for [i (range n)]
                                        (do (setv part (rng_int seed i 3))  ; Select a random part
                                            (setv z (- i (/ n 2)))  ; Precalculate z coordinate
                                            (print "Part" i "is" part)
-                                           (cond [(= part 0) (part_torus (+ seed i) z)]
-                                                 [(= part 1) (part_bevelbox (+ seed i) z)]
-                                                 [(= part 2) (part_cylinder (+ seed i) z)]
-                                                 [(= part 3) (part_storagering (+ seed i) z)])))
+                                           (cond [(= part 0) (part_torus (+ seed i) config z)]
+                                                 [(= part 1) (part_bevelbox (+ seed i) config z)]
+                                                 [(= part 2) (part_cylinder (+ seed i) config z)]
+                                                 [(= part 3) (part_storagering (+ seed i) config z)])))
                                   (join_objects)
                                   (set_material)))
 
 (clear_scene)
-(generate_station 5)
+(setv conf {"min_parts"       3
+            "max_parts"       8
+            "torus_major_min" 2.0
+            "torus_major_max" 5.0
+            "torus_minor_min" 0.1
+            "torus_minor_max" 0.5
+            "bevelbox_min"    0.2
+            "bevelbox_max"    0.5
+            "cylinder_min"    0.5
+            "cylinder_max"    3.0
+            "cylinder_h_min"  0.3
+            "cylinder_h_max"  1.0
+            "storage_min"     0.5
+            "storage_max"     1.0
+            })
+(generate_station 5 conf)
 
 
 ; Good seeds:
