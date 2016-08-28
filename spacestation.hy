@@ -17,11 +17,11 @@
 
 (def obj_prefix "SpaceStation_")
 
-(defn clear_scene [] (do (apply bpy.ops.object.select_all [] {"action" "DESELECT"})
+(defn clear_scene [] (do (bpy.ops.object.select_all :action "DESELECT")
                          (for [o bpy.context.scene.objects]
                                (if (o.name.startswith "SpaceStation")
                                    (setv o.select true)))
-                         (apply bpy.ops.object.delete [] {"use_global" false})))
+                         (bpy.ops.object.delete :use_global false)))
 
 (defn join_objects [] (do (bpy.ops.object.select_all :action "DESELECT")
                           ; Select all station parts
@@ -130,25 +130,24 @@
                                                  [(= part 2) (part_cylinder (+ seed i) config z)]
                                                  [(= part 3) (part_storagering (+ seed i) config z)])))
                                   (join_objects)
-                                  (set_material)))
+                                  (if (= __name__ "__main__") (set_material))))  ; Only set material if this is the main script
 
-(clear_scene)
-(setv conf {"min_parts"       3
-            "max_parts"       8
-            "torus_major_min" 2.0
-            "torus_major_max" 5.0
-            "torus_minor_min" 0.1
-            "torus_minor_max" 0.5
-            "bevelbox_min"    0.2
-            "bevelbox_max"    0.5
-            "cylinder_min"    0.5
-            "cylinder_max"    3.0
-            "cylinder_h_min"  0.3
-            "cylinder_h_max"  1.0
-            "storage_min"     0.5
-            "storage_max"     1.0
-            })
-(generate_station 5 conf)
+(if (= __name__ "__main__") (do (clear_scene)
+                                (setv conf {"min_parts"       3
+                                            "max_parts"       8
+                                            "torus_major_min" 2.0
+                                            "torus_major_max" 5.0
+                                            "torus_minor_min" 0.1
+                                            "torus_minor_max" 0.5
+                                            "bevelbox_min"    0.2
+                                            "bevelbox_max"    0.5
+                                            "cylinder_min"    0.5
+                                            "cylinder_max"    3.0
+                                            "cylinder_h_min"  0.3
+                                            "cylinder_h_max"  1.0
+                                            "storage_min"     0.5
+                                            "storage_max"     1.0})
+                                (generate_station 5 conf)))
 
 
 ; Good seeds:
